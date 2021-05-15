@@ -1,4 +1,3 @@
-// BatterySensor.h
 // Copyright (C) 2019 Alex Goris
 // This file is part of FlyballETS-Software
 // FlyballETS-Software is free software : you can redistribute it and / or modify
@@ -14,31 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.If not, see <http://www.gnu.org/licenses/>
 
-#ifndef _BATTERYSENSOR_h
-#define _BATTERYSENSOR_h
+#include <ArduinoJson.h>
+#pragma once
 
-#include <Arduino.h>
-#include <config.h>
-
-class BatterySensorClass
-{
-protected:
-public:
-   void init(uint8_t iBatterySensorPin);
-   void CheckBatteryVoltage();
-   uint16_t GetBatteryVoltage();
-   uint16_t GetBatteryPercentage();
-   uint16_t GetLastAnalogRead();
-
-private:
-   uint8_t _iBatterySensorPin;
-
-   int _iBatteryReadings[10];
-   int _iNumberOfBatteryReadings = 0;
-   uint16_t _iBatteryVoltage = 0;
-   uint16_t _iAverageBatteryReading;
-};
-
-extern BatterySensorClass BatterySensor;
-
-#endif
+const size_t bsRaceData = 5 * JSON_ARRAY_SIZE(4) + JSON_OBJECT_SIZE(1) + 16 * JSON_OBJECT_SIZE(2) + 4 * JSON_OBJECT_SIZE(4) + JSON_OBJECT_SIZE(7) + 870;
+const size_t bsRaceDataArray = JSON_ARRAY_SIZE(2) + 10 * JSON_ARRAY_SIZE(4) + JSON_OBJECT_SIZE(1) + 32 * JSON_OBJECT_SIZE(2) + 8 * JSON_OBJECT_SIZE(4) + 2 * JSON_OBJECT_SIZE(7) + 1720;
+const size_t bsLightsData = JSON_ARRAY_SIZE(5) + JSON_OBJECT_SIZE(1) + 20;
+const size_t bsActionScheduleStartRace = 2 * JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(2);

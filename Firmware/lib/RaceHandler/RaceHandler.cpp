@@ -16,12 +16,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.If not, see <http://www.gnu.org/licenses/>
 
-#include "LightsController.h"
-#include "LCDController.h"
-#include "RaceHandler.h"
-#include "SettingsManager.h"
-#include "config.h"
-#include "WebHandler.h"
+#include <RaceHandler.h>
+#include <LightsController.h>
+#include <LCDController.h>
+#include <SettingsManager.h>
+#include <config.h>
+#include <Structs.h>
+#include <WebHandler.h>
 
 /// <summary>
 ///   Initialises this object andsets all counters to 0.
@@ -56,7 +57,7 @@ void RaceHandlerClass::_ChangeRaceState(RaceStates byNewRaceState)
       PreviousRaceState = RaceState;
       RaceState = byNewRaceState;
 #ifndef WiFiOFF
-      WebHandler._SendRaceData();
+      WebHandler._SendRaceData(_iCurrentRaceId, -1);
 #endif
    }
 }
@@ -99,6 +100,11 @@ void RaceHandlerClass::_ChangeDogNumber(uint8_t iNewDogNumber)
 /// </summary>
 void RaceHandlerClass::Main()
 {
+   //Handle scheduled race start
+   this->_HandleScheduledRace();
+   //Don't handle anything if race is stopped
+   if (RaceState == RaceStates::STOPPED || RaceState == RaceStates::SCHEDULED)
+   
    //Trigger filterring of sensors interrupts if new records available
    while (_iInputQueueReadIndex != _iInputQueueWriteIndex)
    {
@@ -505,7 +511,7 @@ void RaceHandlerClass::Main()
    }*/
       
    //Update racetime
-   if (RaceState == RUNNING)
+   if (RaceState == RaceStates::RUNNING)
    {
       if (GET_MICROS > llRaceStartTime)
       {
@@ -547,13 +553,40 @@ void RaceHandlerClass::StartTimers()
 ///   Sets the status of the race to STARTING, should be called at same time when start light
 ///   sequence is called.
 /// </summary>
+/// <param name="StartTime">   The time in milliseconds at which the race should start. </param>
+void RaceHandlerClass::StartRace(unsigned long StartTime)
+{
+   _lSchduledRaceStartTime = StartTime;
+   ESP_LOGI(__FILE__, "Race scheduled to start at %lu ms", StartTime);
+   LightsController.ShowScheduledRace(StartTime - millis());
+   RaceState = RaceStates::SCHEDULED;
+}
+
+/// <summary>
+///   Sets the status of the race to STARTING, should be called at same time when start light
+///   sequence is called.
+/// </summary>
 void RaceHandlerClass::StartRace()
 {
    llRaceStartTime = GET_MICROS + 3000000;
+   LightsController.InitiateStartSequence();
    _ChangeRaceState(STARTING);
    ESP_LOGD(__FILE__, "%llu: STARTING!", (llRaceStartTime - 3000000) / 1000);
    ESP_LOGI(__FILE__, "%s", GPSHandler.GetUTCTimestamp());
    
+}
+
+/// <summary>
+///   Handles scheduled race start (if any) and makes sure race is started at scheduled time.
+///   Should be called in main loop
+/// </summary>
+void RaceHandlerClass::_HandleScheduledRace()
+{
+   if (RaceState == RaceStates::SCHEDULED && millis() >= _lSchduledRaceStartTime)
+   {
+      this->StartRace();
+      _lSchduledRaceStartTime = 0;
+   }
 }
 
 /// <summary>
@@ -570,7 +603,7 @@ void RaceHandlerClass::StopRace()
 /// <param name="StopTime">   The time in microseconds at which the race stopped. </param>
 void RaceHandlerClass::StopRace(long long llStopTime)
 {
-   if (RaceState == RUNNING)
+   if (RaceState == RaceStates::RUNNING)
    {
       //Race is running, so we have to record the EndTime
       _llRaceEndTime = llStopTime;
@@ -586,7 +619,7 @@ void RaceHandlerClass::StopRace(long long llStopTime)
 /// </summary>
 void RaceHandlerClass::ResetRace()
 {
-   if (RaceState == STOPPED)
+   if (RaceState == RaceStates::STOPPED)
    {
       iCurrentDog = 0;
       iPreviousDog = 0;
@@ -610,6 +643,7 @@ void RaceHandlerClass::ResetRace()
       _bNextDogFound = false;
       _bNegativeCrossDetected = false;
       _bPotentialNegativeCrossDetected = false;
+      _lSchduledRaceStartTime = 0;
 
       for (auto &bFault : _bDogFaults)
       {
@@ -684,18 +718,19 @@ void RaceHandlerClass::ResetRace()
       _ChangeRaceState(RESET);
    }
 
-   if (_iCurrentRaceId == NUM_HISTORIC_RACE_RECORDS)
-   {
-      _iCurrentRaceId = 0;
-   }
-   else
-   {
-      _iCurrentRaceId++;
+      if (_iCurrentRaceId == NUM_HISTORIC_RACE_RECORDS)
+      {
+         _iCurrentRaceId = 0;
+      }
+      else
+      {
+         _iCurrentRaceId++;
+      }
    }
    ESP_LOGI(__FILE__, "Reset Race: DONE");
 #ifndef WiFiOFF
    //Send updated racedata to any web clients
-   WebHandler._SendRaceData();
+   WebHandler._SendRaceData(_iCurrentRaceId, -1);
 #endif
 }
 
@@ -722,7 +757,7 @@ void RaceHandlerClass::PrintRaceTriggerRecords()
 void RaceHandlerClass::SetDogFault(uint8_t iDogNumber, DogFaults State)
 {
    //Don't process any faults when race is not running
-   if (RaceState == STOPPED || RaceState == RESET)
+   if (RaceState == RaceStates::STOPPED || RaceState == RaceStates::RESET || RaceState == RaceStates::SCHEDULED)
    {
       return;
    }
@@ -766,7 +801,7 @@ void RaceHandlerClass::TriggerSensor1()
    {
       return;
    }
-   else if (RaceState == RESET)
+   else if (RaceState == RESET || RaceState == RaceStates::SCHEDULED)
    {
       if (digitalRead(_iS1Pin) == 1)
       {
@@ -791,7 +826,7 @@ void RaceHandlerClass::TriggerSensor2()
    {
       return;
    }
-   else if (RaceState == RESET)
+   else if (RaceState == RESET || RaceState == RaceStates::SCHEDULED)
    {
       if (digitalRead(_iS2Pin) == 1)
       {
@@ -1208,11 +1243,14 @@ String RaceHandlerClass::GetRaceStateString()
    case RaceHandlerClass::STARTING:
       strRaceState = " START ";
       break;
-   case RaceHandlerClass::RUNNING:
+   case RaceStates::RUNNING:
       strRaceState = "RUNNING";
       break;
    case RaceHandlerClass::RESET:
       strRaceState = " READY ";
+      break;
+   case RaceStates::SCHEDULED:
+      strRaceState = " SCHED ";
       break;
    default:
       break;

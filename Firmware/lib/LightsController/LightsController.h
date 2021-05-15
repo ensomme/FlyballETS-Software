@@ -17,13 +17,12 @@
 #ifndef _LIGHTSCONTROLLER_h
 #define _LIGHTSCONTROLLER_h
 
-#include "Arduino.h"
+#include <Arduino.h>
+#include <config.h>
 #include <NeoPixelBus.h>
-#include "config.h"
-#include "Structs.h"
-#ifdef WS281x
-
-#endif // WS281x
+#include <Structs.h>
+#include <RaceHandler.h>
+#include <WebHandler.h>
 
 class LightsControllerClass
 {
@@ -68,6 +67,7 @@ public:
    void DeleteSchedules();
    void ToggleFaultLight(uint8_t iDogNumber, LightStates byLightState);
    void ReaceReadyFault(LightStates byLightState);
+   void ShowScheduledRace(unsigned long Duration);
 
    stLightsState GetLightsState();
 

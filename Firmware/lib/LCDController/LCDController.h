@@ -17,14 +17,13 @@
 #ifndef _LCDCONTROLLER_h
 #define _LCDCONTROLLER_h
 
-#include "Arduino.h"
+#include <Arduino.h>
 #include <LiquidCrystal.h>
 
+class LiquidCrystal;
 class LCDControllerClass
 {
 protected:
-
-
 public:
    void init(LiquidCrystal *Clcd1, LiquidCrystal *Clcd2);
    void Main();
@@ -46,7 +45,8 @@ public:
       BattLevel,
       TeamTime,
       NetTime,
-      BoxDirection
+      BoxDirection,
+      MasterSlaveConnection
    };
 
    void UpdateField(LCDFields lcdfieldField, String strNewValue);
@@ -64,8 +64,7 @@ private:
       int iStartingPosition;
       int iFieldLength;
       String strText;
-   };
-   struct SLCDField _SlcdfieldFields[17];
+   } _SlcdfieldFields[18];
 };
 
 extern LCDControllerClass LCDController;

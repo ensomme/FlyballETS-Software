@@ -7,6 +7,7 @@
 
 
 #define NUM_HISTORIC_RACE_RECORDS 100
+#include "Structs.h"
 
 class RaceHandlerClass
 {
@@ -21,10 +22,12 @@ public:
       RESET,
       STARTING,
       RUNNING,
-      STOPPED
+      STOPPED,
+      SCHEDULED
    };
-   RaceStates RaceState = RESET;
-   RaceStates PreviousRaceState = RESET;
+
+   RaceStates RaceState = RaceStates::RESET;
+   RaceStates PreviousRaceState = RaceStates::RESET;
 
    uint8_t iCurrentDog;
    uint8_t iPreviousDog;
@@ -34,6 +37,7 @@ public:
 
    void Main();
    void StartTimers();
+   void StartRace(unsigned long StartTime);
    void StartRace();
    void StopRace();
    void StopRace(long long llStopTime);
@@ -66,6 +70,7 @@ public:
    boolean GetRunDirection();
 
 private:
+   unsigned long long _lSchduledRaceStartTime;
    long long _llRaceEndTime;
    long long _llRaceTime;
    long long _llLastDogExitTime;
@@ -74,8 +79,8 @@ private:
    long long _llLastTransitionStringUpdate;
    long long _llRaceElapsedTime;
 
-   uint8_t  _iS1Pin;
-   uint8_t  _iS2Pin;
+   uint8_t _iS1Pin;
+   uint8_t _iS2Pin;
    boolean _bRunDirectionInverted = false;
    boolean _bNextDogFound = false;
 
@@ -134,6 +139,7 @@ private:
    STriggerRecord _QueuePop();
    bool _QueueEmpty();
    void _AddToTransitionString(STriggerRecord _InterruptTrigger);
+   void _HandleScheduledRace();
 };
 
 extern RaceHandlerClass RaceHandler;

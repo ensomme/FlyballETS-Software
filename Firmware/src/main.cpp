@@ -49,6 +49,7 @@
 #include <RaceHandler.h>
 #include <LightsController.h>
 #include <BatterySensor.h>
+#include "main.h"
 
 /*List of pins and the ones used (Lolin32 board):
    - 34: S1 (handler side) photoelectric sensor. ESP32 has no pull-down resistor on 34 pin, but pull-down anyway by 1kohm resistor on sensor board
@@ -87,20 +88,6 @@
    - 36/VP: GPS rx (ESP tx)
    - 39/VN: GPS tx (ESP rx)
 */
-
-//Set simulate to true to enable simulator class (see Simulator.cpp/h)
-#if Simulate
-#include "Simulator.h"
-#endif
-
-#ifdef WS281x
-//#include <Adafruit_NeoPixel.h>
-#include <NeoPixelBus.h>
-#endif // WS281x
-
-#ifdef ESP32
-#include <ESPmDNS.h>
-#endif
 uint8_t iS1Pin = 34;
 #if !JTAG
 uint8_t iS2Pin = 33;
@@ -182,36 +169,32 @@ byte bySerialIndex = 0;
 boolean bSerialStringComplete = false;
 boolean bRaceSummaryPrinted = false;
 
-//Wifi stuff
-//WiFiMulti wm;
-IPAddress IPGateway(192, 168, 20, 1);
-IPAddress IPNetwork(192, 168, 20, 0);
-IPAddress IPSubnet(255, 255, 255, 0);
-
 //Define serial pins for GPS module
 HardwareSerial GPSSerial(1);
 
 //Keep last reported OTA progress so we can send message for every % increment
 unsigned int uiLastProgress = 0;
 
-//Function prototypes
-void Sensor1Wrapper();
-void Sensor2Wrapper();
-#ifndef WiFiOFF
-   void WiFiEvent(WiFiEvent_t event);
+//ESP32 multi core magic :)
+#ifdef ESP32
+TaskHandle_t Task0;
 #endif
-void ResetRace();
-void mdnsServerSetup();
-void StartStopRace();
-void StopRaceMain();
-void StartRaceMain();
-void serialEvent();
+
+#ifndef WiFiOFF
+   WifiManager wifiManager;
+#endif
+
 
 void setup()
 {
-   EEPROM.begin(EEPROM_SIZE);
+   //Configure serial interface
    Serial.begin(115200);
+   strSerialData[0] = 0;
+
+   //init SettingsManager
    SettingsManager.init();
+   SettingsManager.setSetting("OperationMode", "0");
+   SettingsManager.setSetting("APName", "FlyballETS");
 
    pinMode(iS1Pin, INPUT_PULLDOWN);
    pinMode(iS2Pin, INPUT_PULLDOWN);
@@ -262,24 +245,9 @@ void setup()
    //Initialize LCDController class with lcd1 and lcd2 objects
    LCDController.init(&lcd, &lcd2);
 
-   strSerialData[0] = 0;
-
    #ifndef WiFiOFF
-   //Setup AP
-   WiFi.onEvent(WiFiEvent);
-   WiFi.mode(WIFI_MODE_AP);
-   String strAPName = SettingsManager.getSetting("APName");
-   String strAPPass = SettingsManager.getSetting("APPass");
-
-   if (!WiFi.softAP(strAPName.c_str(), strAPPass.c_str()))
-   {
-      ESP_LOGW(__FILE__, "Error initializing softAP!");
-   }
-   else
-   {
-      ESP_LOGI(__FILE__, "Wifi started successfully, AP name: %s, pass: %s!", strAPName.c_str(), strAPPass.c_str());
-   }
-   WiFi.softAPConfig(IPGateway, IPGateway, IPSubnet);
+   //Init Wifi setup
+   wifiManager.SetupWiFi();
 
    //configure webserver
    WebHandler.init(80);
@@ -287,6 +255,8 @@ void setup()
 
    //Initialize RaceHandler class with S1 and S2 pins
    RaceHandler.init(iS1Pin, iS2Pin);
+
+   SystemManager.init();
 
    //Initialize simulatorclass pins if applicable
 #if Simulate
@@ -320,7 +290,6 @@ void setup()
       }
    });
    ArduinoOTA.onError([](ota_error_t error) {
-      ESP_LOGE(__FILE__, "");
       ESP_LOGE(__FILE__, "[OTA]: Error[%u]: ", error);
    });
    ArduinoOTA.begin();
@@ -335,6 +304,21 @@ void setup()
    GPSHandler.init(&GPSSerial);
 
    ESP_LOGI(__FILE__, "Setup running on core %d", xPortGetCoreID());
+
+#ifdef ESP32
+   mdnsServerSetup();
+
+   xTaskCreatePinnedToCore(
+      Core0Loop,
+      "Task0",
+      8192,
+      NULL,
+      1,
+      &Task0,
+      0);
+#endif //  ESP32
+
+   ESP_LOGI(__FILE__, "Ready, version %s", APP_VER);
 }
 
 void loop()
@@ -381,6 +365,15 @@ void loop()
    WebHandler.loop();
    #endif
 
+   wifiManager.WiFiLoop();
+
+   SystemManager.loop();
+
+#if Simulate
+   //Run simulator
+   Simulator.Main();
+#endif
+
    //Reset variables when state RESET
    if (RaceHandler.RaceState == RaceHandler.RESET)
    {
@@ -389,39 +382,222 @@ void loop()
       bRaceSummaryPrinted = false;
    }
 
-   //Race start/stop button (remote D0 output)
-   if (digitalRead(iRC0Pin) == HIGH && (GET_MICROS / 1000 - lLastRCPress[0]) > 2000)
+   HandleSerialMessages();
+
+   HandleRemoteControl();
+
+   HandleLCDUpdates();
+
+   if (iCurrentRaceState != RaceHandler.RaceState)
    {
-      StartStopRace();
+      ESP_LOGI(__FILE__, "RS: %s", RaceHandler.GetRaceStateString());
    }
 
-   //Race start (serial command only)
-   if (bSerialStringComplete && strSerialData == "start" && (RaceHandler.RaceState == RaceHandler.RESET))
+   if (RaceHandler.RaceState == RaceHandler.STOPPED && ((GET_MICROS / 1000 - (RaceHandler.llRaceStartTime / 1000 + RaceHandler.GetRaceTime() * 1000)) > 1500) && !bRaceSummaryPrinted)
    {
+      //Race has been stopped 1 second ago: print race summary to console
+      for (uint8_t i = 0; i < 4; i++)
+      {
+         //ESP_LOGD(__FILE__, "Dog %i -> %i run(s).", i + 1, RaceHandler.iDogRunCounters[i] + 1);
+         for (uint8_t i2 = 0; i2 < (RaceHandler.iDogRunCounters[i] + 1); i2++)
+         {
+            ESP_LOGI(__FILE__, "Dog %i: %s | CR: %s", i + 1, RaceHandler.GetStoredDogTimes(i, i2), RaceHandler.TransformCrossingTime(i, i2).c_str());
+         }
+      }
+      ESP_LOGI(__FILE__, " Team: %s", cElapsedRaceTime);
+      ESP_LOGI(__FILE__, "  Net: %s\n", cTeamNetTime);
+      #if !Simulate
+         RaceHandler.PrintRaceTriggerRecords();
+      #endif
+      bRaceSummaryPrinted = true;
+   }
+
+   //heap memory monitor
+   long long llCurrentMillis = GET_MICROS / 1000;
+   if (llCurrentMillis - llHeapPreviousMillis > llHeapInterval)
+   {
+      ESP_LOGI(__FILE__, "Elapsed system time: %llu. Heap caps free size: %i", GET_MICROS / 1000, heap_caps_get_free_size(MALLOC_CAP_8BIT));
+      ESP_LOGI(__FILE__, "Heap integrity OK? %i", heap_caps_check_integrity_all(error));
+      llHeapPreviousMillis = llCurrentMillis;
+   }
+   
+   if (RaceHandler.iCurrentDog != iCurrentDog && RaceHandler.RaceState == RaceHandler.RUNNING)
+   {
+      ESP_LOGI(__FILE__, "Dog %i: %s | CR: %s", RaceHandler.iPreviousDog + 1, RaceHandler.GetDogTime(RaceHandler.iPreviousDog, -2), RaceHandler.GetCrossingTime(RaceHandler.iPreviousDog, -2).c_str());
+      ESP_LOGI(__FILE__, "Running dog: %i.", RaceHandler.iCurrentDog + 1);
+   }
+
+   //Enable (uncomment) the following if you want periodic status updates on the serial port
+   /*
+   if ((GET_MICROS / 1000 - lLastSerialOutput) > 60000)
+   {
+      //ESP_LOGI(__FILE__, "%llu: Elapsed time: %s", GET_MICROS / 1000, cElapsedRaceTime);
+      ESP_LOGI(__FILE__, "Free heap: %i", esp_get_free_heap_size());
+      ESP_LOGI(__FILE__, "GPS Time: %s\r\n", GPSHandler.GetUTCTimestamp());
+      lLastSerialOutput = GET_MICROS / 1000;
+   }*/
+
+   //Cleanup variables used for checking if something changed
+   iCurrentDog = RaceHandler.iCurrentDog;
+   iCurrentRaceState = RaceHandler.RaceState;
+
+   //Handle laser output
+   digitalWrite(iLaserOutputPin, !digitalRead(iLaserTriggerPin));
+
+   //Handle side switch button
+   if (digitalRead(SideSwitch.Pin) == LOW && GET_MICROS / 1000 - SideSwitch.LastTriggerTime > SideSwitch.CoolDownTime)
+   {
+      SideSwitch.LastTriggerTime = GET_MICROS / 1000;
+      ESP_LOGI(__FILE__, "Switching sides!");
+      RaceHandler.ToggleRunDirection();
+   }
+#endif
+}
+
+void serialEvent()
+{
+   //Listen on serial port
+
+   while (Serial.available() > 0)
+   {
+      char cInChar = Serial.read(); // Read a character
+                                    //Check if buffer contains complete serial message, terminated by newline (\n)
+      if (cInChar == '\r')
+      {
+         if (Serial.available() > 0)
+         {
+            //More data, so probably \r\n
+            cInChar = Serial.read();
+         }
+         else
+         {
+            //We only got \r, treat it as newline
+            cInChar = '\n';
+         }
+      }
+      if (cInChar == '\n')
+      {
+         //Serial message in buffer is complete, null terminate it and store it for further handling
+         bSerialStringComplete = true;
+         ESP_LOGD(__FILE__, "SERIAL received: '%s'", strSerialData.c_str());
+         strSerialData += '\0'; // Null terminate the string
+         break;
+      }
+      strSerialData += cInChar; // Store it
+   }
+}
+
+/// <summary>
+///   These are wrapper functions which are necessary because it's not allowed to use a class member function directly as an ISR
+/// </summary>
+void Sensor2Wrapper()
+{
+   RaceHandler.TriggerSensor2();
+}
+
+/// <summary>
+///   These are wrapper functions which are necessary because it's not allowed to use a class member function directly as an ISR
+/// </summary>
+void Sensor1Wrapper()
+{
+   RaceHandler.TriggerSensor1();
+}
+
+/// <summary>
+///   Start a race.
+/// </summary>
+void StartRaceMain()
+{
+   LightsController.InitiateStartSequence();
+   RaceHandler.StartRace();
+}
+
+/// <summary>
+///   Stop a race.
+/// </summary>
+void StopRaceMain()
+{
+   RaceHandler.StopRace();
+   LightsController.DeleteSchedules();
+}
+
+/// <summary>
+///   Starts (if stopped) or stops (if started) a race. Start is only allowed if race is stopped and reset.
+/// </summary>
+void StartStopRace()
+{
+   if (RaceHandler.RaceState == RaceHandler.RESET) //If race is reset
+   {
+      //Then start the race
       StartRaceMain();
    }
-
-   //Race stop (serial command only)
-   if (bSerialStringComplete && strSerialData == "stop" && ((RaceHandler.RaceState == RaceHandler.STARTING) || (RaceHandler.RaceState == RaceHandler.RUNNING)))
+   else //If race state is running or starting, we should stop it
    {
       StopRaceMain();
    }
+}
 
-   //Race reset button (remote D1 output)
-   if ((digitalRead(iRC1Pin) == HIGH && (GET_MICROS / 1000 - lLastRCPress[1] > 2000)) || (bSerialStringComplete && strSerialData == "reset"))
+/// <summary>
+///   Reset race so new one can be started, reset is only allowed when race is stopped
+/// </summary>
+void ResetRace()
+{
+   if (RaceHandler.RaceState != RaceHandler.STOPPED) //Only allow reset when race is stopped first
+   {
+      return;
+   }
+   lLastRCPress[1] = GET_MICROS / 1000;
+   LightsController.ResetLights();
+   RaceHandler.ResetRace();
+}
+
+#ifdef ESP32
+void mdnsServerSetup()
+{
+   MDNS.addService("http", "tcp", 80);
+   MDNS.addServiceTxt("arduino", "tcp", "app_version", APP_VER);
+   MDNS.begin("FlyballETS");
+}
+#endif
+
+void Core0Loop(void *parameter)
+{
+   SlaveHandler.init();
+   for (;;)
+   {
+      SlaveHandler.loop();
+      //yield();
+      vTaskDelay(5);
+   }
+}
+
+void HandleSerialMessages()
+{
+   if (!bSerialStringComplete)
+   {
+      return;
+   }
+   else if (strSerialData.equals("start") && RaceHandler.RaceState == RaceHandler.RESET)
+   {
+      StartRaceMain();
+   }
+   else if (strSerialData.equals("stop") && (RaceHandler.RaceState == RaceHandler.STARTING || RaceHandler.RaceState == RaceHandler.RUNNING))
+   {
+      StopRaceMain();
+   }
+   else if (strSerialData == "reset")
    {
       ResetRace();
    }
-
    //Reboot ESP32
-   if (bSerialStringComplete && strSerialData == "reboot")
+   else if (strSerialData.equals("reboot"))
    {
       ESP.restart();
    }
 
-#if Simulate
+   #if Simulate
    //Change Race ID (only serial command), e.g. race 1 or race 2
-   if (bSerialStringComplete && strSerialData.startsWith("race"))
+   else if (strSerialData.startsWith("race"))
    {
       strSerialData.remove(0, 5);
       iSimulatedRaceID = strSerialData.toInt();
@@ -431,39 +607,100 @@ void loop()
       }
       Simulator.ChangeSimulatedRaceID(iSimulatedRaceID);
    }
-#endif
+   #endif
 
-   //Dog 1 fault RC button
-   if ((digitalRead(iRC2Pin) == HIGH && (GET_MICROS / 1000 - lLastRCPress[2] > 2000)) || (bSerialStringComplete && strSerialData == "d1f"))
+   else if (strSerialData == "d0f")
    {
-      lLastRCPress[2] = GET_MICROS / 1000;
+      RaceHandler.SetDogFault(0);
+   }
+   else if (strSerialData == "d1f")
+   {
+      RaceHandler.SetDogFault(1);
+   }
+   else if (strSerialData == "d2f")
+   {
+      RaceHandler.SetDogFault(2);
+   }
+   else if (strSerialData == "d3f")
+   {
+      RaceHandler.SetDogFault(3);
+   }
+   else if (strSerialData.indexOf("SET_LOGLEVEL=") > -1)
+   {
+      String strLogLevel = strSerialData.substring(13);
+      ESP_LOGI(__FILE__, "Setting loglevel to %s", strLogLevel.c_str());
+      if (strLogLevel.indexOf("ERROR") > -1)
+         esp_log_level_set("*", ESP_LOG_ERROR);
+      if (strLogLevel.indexOf("WARN") > -1)
+         esp_log_level_set("*", ESP_LOG_WARN);
+      if (strLogLevel.indexOf("INFO") > -1)
+         esp_log_level_set("*", ESP_LOG_INFO);
+      if (strLogLevel.indexOf("DEBUG") > -1)
+         esp_log_level_set("*", ESP_LOG_DEBUG);
+      if (strLogLevel.indexOf("VERB") > -1)
+         esp_log_level_set("*", ESP_LOG_VERBOSE);
+   }
+
+   //Make sure this stays last in the function!
+   if (strSerialData.length() > 0 && bSerialStringComplete)
+   {
+      ESP_LOGI(__FILE__, "cSer: '%s'", strSerialData.c_str());
+
+      strSerialData = "";
+      bSerialStringComplete = false;
+   }
+}
+
+void HandleRemoteControl()
+{
+   //Race start/stop button (remote D0 output)
+   if (digitalRead(iRC0Pin) == HIGH && (millis() - lLastRCPress[0] > 2000))
+   {
+      lLastRCPress[0] = millis();
+      StartStopRace();
+   }
+
+   //Race reset button (remote D1 output)
+   if (digitalRead(iRC1Pin) == HIGH && (millis() - lLastRCPress[1] > 2000))
+   {
+      lLastRCPress[1] = millis();
+      ResetRace();
+   }
+
+   //Dog0 fault RC button
+   if (digitalRead(iRC2Pin) == HIGH && (millis() - lLastRCPress[2] > 2000))
+   {
+      lLastRCPress[2] = millis();
       //Toggle fault for dog
       RaceHandler.SetDogFault(0);
    }
 
-   //Dog 2 fault RC button
-   if ((digitalRead(iRC3Pin) == HIGH && (GET_MICROS / 1000 - lLastRCPress[3] > 2000)) || (bSerialStringComplete && strSerialData == "d2f"))
+   //Dog1 fault RC button
+   if (digitalRead(iRC3Pin) == HIGH && (millis() - lLastRCPress[3] > 2000))
    {
-      lLastRCPress[3] = GET_MICROS / 1000;
+      lLastRCPress[3] = millis();
       //Toggle fault for dog
       RaceHandler.SetDogFault(1);
    }
-   //Dog 3 fault RC button
-   if ((digitalRead(iRC4Pin) == HIGH && (GET_MICROS / 1000 - lLastRCPress[4] > 2000)) || (bSerialStringComplete && strSerialData == "d3f"))
+   //Dog2 fault RC button
+   if (digitalRead(iRC4Pin) == HIGH && (millis() - lLastRCPress[4] > 2000))
    {
-      lLastRCPress[4] = GET_MICROS / 1000;
+      lLastRCPress[4] = millis();
       //Toggle fault for dog
       RaceHandler.SetDogFault(2);
    }
 
-   //Dog 4 fault RC button
-   if ((digitalRead(iRC5Pin) == HIGH && (GET_MICROS / 1000 - lLastRCPress[5] > 2000)) || (bSerialStringComplete && strSerialData == "d4f"))
+   //Dog3 fault RC button
+   if (digitalRead(iRC5Pin) == HIGH && (millis() - lLastRCPress[5] > 2000))
    {
-      lLastRCPress[5] = GET_MICROS / 1000;
+      lLastRCPress[5] = millis();
       //Toggle fault for dog
       RaceHandler.SetDogFault(3);
    }
+}
 
+void HandleLCDUpdates()
+{
    //Update LCD Display fields
    //Update team time to display
    #if Accuracy2digits
@@ -535,197 +772,6 @@ void loop()
    LCDController.UpdateField(LCDController.D4CrossTime, RaceHandler.GetCrossingTime(3));
    LCDController.UpdateField(LCDController.D4RerunInfo, RaceHandler.GetRerunInfo(3));
 
-   if (iCurrentRaceState != RaceHandler.RaceState)
-   {
-      ESP_LOGI(__FILE__, "RS: %s", RaceHandler.GetRaceStateString());
-   }
-
-   if (RaceHandler.RaceState == RaceHandler.STOPPED && ((GET_MICROS / 1000 - (RaceHandler.llRaceStartTime / 1000 + RaceHandler.GetRaceTime() * 1000)) > 1500) && !bRaceSummaryPrinted)
-   {
-      //Race has been stopped 1 second ago: print race summary to console
-      for (uint8_t i = 0; i < 4; i++)
-      {
-         //ESP_LOGD(__FILE__, "Dog %i -> %i run(s).", i + 1, RaceHandler.iDogRunCounters[i] + 1);
-         for (uint8_t i2 = 0; i2 < (RaceHandler.iDogRunCounters[i] + 1); i2++)
-         {
-            ESP_LOGI(__FILE__, "Dog %i: %s | CR: %s", i + 1, RaceHandler.GetStoredDogTimes(i, i2), RaceHandler.TransformCrossingTime(i, i2).c_str());
-         }
-      }
-      ESP_LOGI(__FILE__, " Team: %s", cElapsedRaceTime);
-      ESP_LOGI(__FILE__, "  Net: %s\n", cTeamNetTime);
-      #if !Simulate
-         RaceHandler.PrintRaceTriggerRecords();
-      #endif
-      bRaceSummaryPrinted = true;
-   }
-
-   //heap memory monitor
-   long long llCurrentMillis = GET_MICROS / 1000;
-   if (llCurrentMillis - llHeapPreviousMillis > llHeapInterval)
-   {
-      ESP_LOGI(__FILE__, "Elapsed system time: %llu. Heap caps free size: %i", GET_MICROS / 1000, heap_caps_get_free_size(MALLOC_CAP_8BIT));
-      ESP_LOGI(__FILE__, "Heap integrity OK? %i", heap_caps_check_integrity_all(error));
-      llHeapPreviousMillis = llCurrentMillis;
-   }
-   
-   if (RaceHandler.iCurrentDog != iCurrentDog && RaceHandler.RaceState == RaceHandler.RUNNING)
-   {
-      ESP_LOGI(__FILE__, "Dog %i: %s | CR: %s", RaceHandler.iPreviousDog + 1, RaceHandler.GetDogTime(RaceHandler.iPreviousDog, -2), RaceHandler.GetCrossingTime(RaceHandler.iPreviousDog, -2).c_str());
-      ESP_LOGI(__FILE__, "Running dog: %i.", RaceHandler.iCurrentDog + 1);
-   }
-
-   //Enable (uncomment) the following if you want periodic status updates on the serial port
-   /*
-   if ((GET_MICROS / 1000 - lLastSerialOutput) > 60000)
-   {
-      //ESP_LOGI(__FILE__, "%llu: Elapsed time: %s", GET_MICROS / 1000, cElapsedRaceTime);
-      ESP_LOGI(__FILE__, "Free heap: %i", esp_get_free_heap_size());
-      lLastSerialOutput = GET_MICROS / 1000;
-   }*/
-
-   //Cleanup variables used for checking if something changed
-   iCurrentDog = RaceHandler.iCurrentDog;
-   iCurrentRaceState = RaceHandler.RaceState;
-
-   //Check if we have serial data which we should handle
-   if (strSerialData.length() > 0 && bSerialStringComplete)
-   {
-      strSerialData = "";
-      bSerialStringComplete = false;
-   }
-
-#if !JTAG
-   //Handle laser output
-   digitalWrite(iLaserOutputPin, !digitalRead(iLaserTriggerPin));
-
-   //Handle side switch button
-   if (digitalRead(SideSwitch.Pin) == LOW && GET_MICROS / 1000 - SideSwitch.LastTriggerTime > SideSwitch.CoolDownTime)
-   {
-      SideSwitch.LastTriggerTime = GET_MICROS / 1000;
-      ESP_LOGI(__FILE__, "Switching sides!");
-      RaceHandler.ToggleRunDirection();
-   }
-#endif
+   bool bMasterSlaveConnectionStatus = SystemManager.CheckMasterSlaveConnection();
+   LCDController.UpdateField(LCDController.MasterSlaveConnection, bMasterSlaveConnectionStatus ? "1" : "0");
 }
-
-void serialEvent()
-{
-   //Listen on serial port
-
-   while (Serial.available() > 0)
-   {
-      char cInChar = Serial.read(); // Read a character
-                                    //Check if buffer contains complete serial message, terminated by newline (\n)
-      if (cInChar == '\n')
-      {
-         //Serial message in buffer is complete, null terminate it and store it for further handling
-         bSerialStringComplete = true;
-         ESP_LOGD(__FILE__, "SERIAL received: '%s'", strSerialData.c_str());
-         strSerialData += '\0'; // Null terminate the string
-         break;
-      }
-      strSerialData += cInChar; // Store it
-   }
-}
-
-/// <summary>
-///   These are wrapper functions which are necessary because it's not allowed to use a class member function directly as an ISR
-/// </summary>
-void Sensor2Wrapper()
-{
-   RaceHandler.TriggerSensor2();
-}
-
-/// <summary>
-///   These are wrapper functions which are necessary because it's not allowed to use a class member function directly as an ISR
-/// </summary>
-void Sensor1Wrapper()
-{
-   RaceHandler.TriggerSensor1();
-}
-
-/// <summary>
-///   Start a race.
-/// </summary>
-void StartRaceMain()
-{
-   LightsController.InitiateStartSequence();
-   RaceHandler.StartRace();
-}
-
-/// <summary>
-///   Stop a race.
-/// </summary>
-void StopRaceMain()
-{
-   RaceHandler.StopRace();
-   LightsController.DeleteSchedules();
-}
-
-/// <summary>
-///   Starts (if stopped) or stops (if started) a race. Start is only allowed if race is stopped and reset.
-/// </summary>
-void StartStopRace()
-{
-   lLastRCPress[0] = GET_MICROS / 1000;
-   if (RaceHandler.RaceState == RaceHandler.RESET) //If race is reset
-   {
-      //Then start the race
-      StartRaceMain();
-   }
-   else //If race state is running or starting, we should stop it
-   {
-      StopRaceMain();
-   }
-}
-
-/// <summary>
-///   Reset race so new one can be started, reset is only allowed when race is stopped
-/// </summary>
-void ResetRace()
-{
-   if (RaceHandler.RaceState != RaceHandler.STOPPED) //Only allow reset when race is stopped first
-   {
-      return;
-   }
-   lLastRCPress[1] = GET_MICROS / 1000;
-   LightsController.ResetLights();
-   RaceHandler.ResetRace();
-}
-
-#ifndef WiFiOFF
-void WiFiEvent(WiFiEvent_t event)
-{
-   Serial.printf("Wifi event %i\r\n", event);
-   switch (event)
-   {
-   case SYSTEM_EVENT_AP_START:
-      ESP_LOGI(__FILE__, "AP Started");
-      WiFi.softAPConfig(IPGateway, IPGateway, IPSubnet);
-
-      if (WiFi.softAPIP() != IPGateway)
-      {
-         ESP_LOGE(__FILE__, "I am not running on the correct IP (%s instead of %s), rebooting!", WiFi.softAPIP().toString().c_str(), IPGateway.toString().c_str());
-         ESP.restart();
-      }
-
-      ESP_LOGI(__FILE__, "Ready on IP: %s, v%s", WiFi.softAPIP().toString().c_str(), APP_VER);
-      break;
-   case SYSTEM_EVENT_AP_STOP:
-      ESP_LOGI(__FILE__, "AP Stopped");
-      break;
-
-   default:
-      break;
-   }
-}
-
-#ifdef ESP32
-void mdnsServerSetup()
-{
-   MDNS.addService("http", "tcp", 80);
-   MDNS.addServiceTxt("arduino", "tcp", "app_version", APP_VER);
-   MDNS.begin("FlyballETS");
-}
-#endif
-#endif

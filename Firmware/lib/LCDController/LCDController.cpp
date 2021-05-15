@@ -16,9 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.If not, see <http://www.gnu.org/licenses/>
 
-#include "config.h"
-#include "LCDController.h"
-#include <LiquidCrystal.h>
+#include <LCDController.h>
 
 /// <summary>
 ///   Initialises this object.
@@ -39,10 +37,10 @@ void LCDControllerClass::init(LiquidCrystal *Clcd1, LiquidCrystal *Clcd2)
    //Put initial text on screen
    //                                 1         2         3
    //LCD layout:            0123456789012345678901234567890123456789
-   _UpdateLCD(1, 0, String("1:   0.000  +  0.000    |      READY    "), 40);
-   _UpdateLCD(2, 0, String("2:   0.000  +  0.000    | Team:    0.000"), 40);
-   _UpdateLCD(3, 0, String("3:   0.000  +  0.000    |  Net:    0.000"), 40);
-   _UpdateLCD(4, 0, String("4:   0.000  +  0.000    |  100%      -->"), 40);
+   _UpdateLCD(1, 0, String("1:   0.000  +  0.000   |       READY    "), 40);
+   _UpdateLCD(2, 0, String("2:   0.000  +  0.000   |  Team:    0.000"), 40);
+   _UpdateLCD(3, 0, String("3:   0.000  +  0.000   |   Net:    0.000"), 40);
+   _UpdateLCD(4, 0, String("4:   0.000  +  0.000   | C:1   100%  -->"), 40);
 
    _SlcdfieldFields[D1Time] = {1, 3, 7, String("  0.000")};
    _SlcdfieldFields[D1RerunInfo] = {1, 22, 2, String("  ")};
@@ -57,14 +55,15 @@ void LCDControllerClass::init(LiquidCrystal *Clcd1, LiquidCrystal *Clcd2)
    _SlcdfieldFields[D3CrossTime] = {3, 12, 8, String("        ")};
    _SlcdfieldFields[D4CrossTime] = {4, 12, 8, String("        ")};
 #if BatteryCalibration
-   _SlcdfieldFields[BattLevel] = {4, 27, 4, String("0000")};
+   _SlcdfieldFields[BattLevel] = {4, 31, 4, String("0000")};
 #else
-   _SlcdfieldFields[BattLevel] = {4, 27, 3, String("LOW")};
+   _SlcdfieldFields[BattLevel] = {4, 31, 3, String("LOW")};
 #endif
    _SlcdfieldFields[RaceState] = {1, 30, 7, String(" READY ")};
    _SlcdfieldFields[TeamTime] = {2, 33, 7, String("  0.000")};
    _SlcdfieldFields[NetTime] = {3, 33, 7, String("  0.000")};
    _SlcdfieldFields[BoxDirection] = {4, 37, 3, String("-->")};
+   _SlcdfieldFields[MasterSlaveConnection] = {4, 27, 1, String("0")};
 }
 
 /// <summary>
