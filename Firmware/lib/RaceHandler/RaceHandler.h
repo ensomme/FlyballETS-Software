@@ -2,12 +2,12 @@
 #ifndef _RACEHANDLER_h
 #define _RACEHANDLER_h
 
-#include "Structs.h"
-#include "Arduino.h"
+#include <Arduino.h>
+#include <config.h>
 
 
 #define NUM_HISTORIC_RACE_RECORDS 100
-#include "Structs.h"
+#include <Structs.h>
 
 class RaceHandlerClass
 {

@@ -1,28 +1,33 @@
 #include "Arduino.h"
 
+//Includes
+#include <Structs.h>
+#include <config.h>
+
 //Public libs
 #include <LiquidCrystal.h>
-#include <ESPmDNS.h>
-#include <ArduinoOTA.h>
+#ifndef WiFiOFF
+    #include <WiFi.h>
+    #include <ESPmDNS.h>
+    #include <ArduinoOTA.h>
+    #include <WiFiUdp.h>
+    #include <WiFiClientSecure.h>
+#endif
 #include <EEPROM.h>
-#include "WiFiUdp.h"
-#include "WiFiClientSecure.h"
 
 //Private libs
 #include <GPSHandler.h>
 #include <SettingsManager.h>
-#include <WebHandler.h>
+#ifndef WiFiOFF
+    #include <WebHandler.h>
+    #include <SlaveHandler.h>
+    #include <WifiManager.h>
+#endif
 #include <RaceHandler.h>
 #include <LCDController.h>
 #include <LightsController.h>
 #include <BatterySensor.h>
 #include <SystemManager.h>
-#include <SlaveHandler.h>
-#include <WifiManager.h>
-
-//Includes
-#include <Structs.h>
-#include <config.h>
 
 //Set simulate to true to enable simulator class (see Simulator.cpp/h)
 #if Simulate
@@ -34,16 +39,14 @@
 #include <NeoPixelBus.h>
 #endif // WS281x
 
-#ifdef ESP32
-#include <ESPmDNS.h>
-#endif
-
 //Function prototypes
 void Sensor1Wrapper();
 void Sensor2Wrapper();
 void ResetRace();
 void mdnsServerSetup();
 void StartStopRace();
+void StopRaceMain();
+void StartRaceMain();
 void serialEvent();
 void Core0Loop(void *parameter);
 void HandleSerialMessages();

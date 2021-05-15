@@ -5,8 +5,10 @@
 #include <Arduino.h>
 #include <Structs.h>
 #include <LightsController.h>
+#include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <global.h>
 #include <ArduinoJson.h>
 #include <SettingsManager.h>
 #include <GPSHandler.h>
@@ -21,7 +23,7 @@
 #include <SPIFFS.h>
 #include <SlaveHandler.h>
 #include <SystemManager.h>
-#include <global.h>
+
 
 class WebHandlerClass
 {

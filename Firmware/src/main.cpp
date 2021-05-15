@@ -21,34 +21,6 @@
 //
 // You should have received a copy of the GNU General Public License along with this program.If not,
 // see <http://www.gnu.org/licenses/>
-#include "Arduino.h"
-
-//Includes
-#include "Structs.h"
-#include "config.h"
-
-//Public libs
-#include <LiquidCrystal.h>
-#ifndef WiFiOFF
-   #include <WiFi.h>
-   #include <WiFiMulti.h>
-   #include <ESPmDNS.h>
-   #include <ArduinoOTA.h>
-   #include <WiFiUdp.h>
-#endif
-#include <EEPROM.h>
-//#include <time.h>
-
-//Private libs
-#include <GPSHandler.h>
-#include <SettingsManager.h>
-#ifndef WiFiOFF
-   #include <WebHandler.h>
-#endif
-#include <LCDController.h>
-#include <RaceHandler.h>
-#include <LightsController.h>
-#include <BatterySensor.h>
 #include "main.h"
 
 /*List of pins and the ones used (Lolin32 board):
@@ -294,16 +266,11 @@ void setup()
    });
    ArduinoOTA.begin();
 
-#ifdef ESP32
-   mdnsServerSetup();
-#endif //  ESP32
 #endif
 
    //Initialize GPS Serial port and class
    GPSSerial.begin(9600, SERIAL_8N1, 39, 36);
    GPSHandler.init(&GPSSerial);
-
-   ESP_LOGI(__FILE__, "Setup running on core %d", xPortGetCoreID());
 
 #ifdef ESP32
    mdnsServerSetup();
@@ -319,12 +286,13 @@ void setup()
 #endif //  ESP32
 
    ESP_LOGI(__FILE__, "Ready, version %s", APP_VER);
+   //ESP_LOGI(__FILE__, "Setup running on core %d", xPortGetCoreID());
 }
 
 void loop()
 {
    //Exclude handling of those services in loop while race is running
-   if (RaceHandler.RaceState == RaceHandler.STOPPED || RaceHandler.RaceState == RaceHandler.RESET)
+   if (RaceHandler.RaceState == RaceHandler.STOPPED || RaceHandler.RaceState == RaceHandler.RESET || RaceHandler.RaceState == RaceHandler.SCHEDULED)
    {
       //Handle settings manager loop
       SettingsManager.loop();
@@ -334,14 +302,14 @@ void loop()
       ArduinoOTA.handle();
       #endif
 
-      //Handle GPS
-      GPSHandler.loop();
-
    #if !JTAG
       //Handle battery sensor main processing
       BatterySensor.CheckBatteryVoltage();
    #endif
    }
+
+   //Handle GPS
+   GPSHandler.loop();
 
    //Check for serial events
    serialEvent();
@@ -374,6 +342,12 @@ void loop()
    Simulator.Main();
 #endif
 
+   HandleSerialMessages();
+
+   HandleRemoteControl();
+
+   HandleLCDUpdates();
+
    //Reset variables when state RESET
    if (RaceHandler.RaceState == RaceHandler.RESET)
    {
@@ -381,12 +355,6 @@ void loop()
       iCurrentRaceState = RaceHandler.RaceState;
       bRaceSummaryPrinted = false;
    }
-
-   HandleSerialMessages();
-
-   HandleRemoteControl();
-
-   HandleLCDUpdates();
 
    if (iCurrentRaceState != RaceHandler.RaceState)
    {
@@ -441,6 +409,7 @@ void loop()
    iCurrentDog = RaceHandler.iCurrentDog;
    iCurrentRaceState = RaceHandler.RaceState;
 
+#if !JTAG
    //Handle laser output
    digitalWrite(iLaserOutputPin, !digitalRead(iLaserTriggerPin));
 
@@ -508,7 +477,6 @@ void Sensor1Wrapper()
 /// </summary>
 void StartRaceMain()
 {
-   LightsController.InitiateStartSequence();
    RaceHandler.StartRace();
 }
 
@@ -526,6 +494,7 @@ void StopRaceMain()
 /// </summary>
 void StartStopRace()
 {
+   lLastRCPress[0] = millis();
    if (RaceHandler.RaceState == RaceHandler.RESET) //If race is reset
    {
       //Then start the race
@@ -656,14 +625,12 @@ void HandleRemoteControl()
    //Race start/stop button (remote D0 output)
    if (digitalRead(iRC0Pin) == HIGH && (millis() - lLastRCPress[0] > 2000))
    {
-      lLastRCPress[0] = millis();
       StartStopRace();
    }
 
    //Race reset button (remote D1 output)
    if (digitalRead(iRC1Pin) == HIGH && (millis() - lLastRCPress[1] > 2000))
    {
-      lLastRCPress[1] = millis();
       ResetRace();
    }
 

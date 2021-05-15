@@ -18,6 +18,7 @@
 #define _LCDCONTROLLER_h
 
 #include <Arduino.h>
+#include <config.h>
 #include <LiquidCrystal.h>
 
 class LiquidCrystal;

@@ -726,12 +726,11 @@ void RaceHandlerClass::ResetRace()
       {
          _iCurrentRaceId++;
       }
-   }
-   ESP_LOGI(__FILE__, "Reset Race: DONE");
-#ifndef WiFiOFF
-   //Send updated racedata to any web clients
-   WebHandler._SendRaceData(_iCurrentRaceId, -1);
-#endif
+      ESP_LOGI(__FILE__, "Reset Race: DONE");
+   #ifndef WiFiOFF
+      //Send updated racedata to any web clients
+      WebHandler._SendRaceData(_iCurrentRaceId, -1);
+   #endif
 }
 
 /// <summary>
