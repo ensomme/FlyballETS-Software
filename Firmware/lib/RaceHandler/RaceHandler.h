@@ -33,14 +33,14 @@ public:
    uint8_t iPreviousDog;
    uint8_t iNextDog;
    uint8_t iDogRunCounters[4];  //Number of (re-)runs for each dog
-   long long llRaceStartTime;
+   unsigned long long llRaceStartTime;
 
    void Main();
    void StartTimers();
-   void StartRace(unsigned long StartTime);
+   void StartRace(unsigned long long StartTime);
    void StartRace();
    void StopRace();
-   void StopRace(long long llStopTime);
+   void StopRace(unsigned long long llStopTime);
    void ResetRace();
    void PrintRaceTriggerRecords();
    void TriggerSensor1();
@@ -71,13 +71,13 @@ public:
 
 private:
    unsigned long long _lSchduledRaceStartTime;
-   long long _llRaceEndTime;
-   long long _llRaceTime;
-   long long _llLastDogExitTime;
-   long long _llS2CrossedSafeTime;
-   long long _llS2CrossedUnsafeTime;
-   long long _llLastTransitionStringUpdate;
-   long long _llRaceElapsedTime;
+   unsigned long long _llRaceEndTime;
+   unsigned long long _llRaceTime;
+   unsigned long long _llLastDogExitTime;
+   unsigned long long _llS2CrossedSafeTime;
+   unsigned long long _llS2CrossedUnsafeTime;
+   unsigned long long _llRaceElapsedTime;
+   unsigned long _lLastTransitionStringUpdate;
 
    uint8_t _iS1Pin;
    uint8_t _iS2Pin;
@@ -112,12 +112,12 @@ private:
    bool _bS1StillSafe;
    bool _bNegativeCrossDetected;
    bool _bPotentialNegativeCrossDetected;
-   long long _llLastDogTimeReturnTimeStamp[4];
+   unsigned long long _llLastDogTimeReturnTimeStamp[4];
    uint8_t _iLastReturnedRunNumber[4];
-   long long _llDogEnterTimes[4];
-   long long _llDogExitTimes[4];
-   long long _llDogTimes[4][4];
-   long long _llCrossingTimes[4][4];
+   unsigned long long _llDogEnterTimes[4];
+   unsigned long long _llDogExitTimes[4];
+   unsigned long _lDogTimes[4][4];
+   long _lCrossingTimes[4][4];
 
    String _strTransition;
    
