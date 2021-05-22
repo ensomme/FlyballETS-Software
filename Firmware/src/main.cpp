@@ -380,7 +380,7 @@ void loop()
       bRaceSummaryPrinted = true;
    }
 
-   //heap memory monitor
+   /*//heap memory monitor
    long long llCurrentMillis = GET_MICROS / 1000;
    if (llCurrentMillis - llHeapPreviousMillis > llHeapInterval)
    {
@@ -388,7 +388,7 @@ void loop()
       ESP_LOGI(__FILE__, "Heap integrity OK? %i", heap_caps_check_integrity_all(error));
       llHeapPreviousMillis = llCurrentMillis;
    }
-   
+   */
    if (RaceHandler.iCurrentDog != iCurrentDog && RaceHandler.RaceState == RaceHandler.RUNNING)
    {
       ESP_LOGI(__FILE__, "Dog %i: %s | CR: %s", RaceHandler.iPreviousDog + 1, RaceHandler.GetDogTime(RaceHandler.iPreviousDog, -2), RaceHandler.GetCrossingTime(RaceHandler.iPreviousDog, -2).c_str());
