@@ -19,7 +19,8 @@
 enum SystemModes
 {
    MASTER,
-   SLAVE
+   SLAVE,
+   SINGLE
 };
 
 #endif

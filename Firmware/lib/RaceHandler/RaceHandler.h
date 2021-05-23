@@ -77,7 +77,7 @@ private:
    unsigned long long _llS2CrossedSafeTime;
    unsigned long long _llS2CrossedUnsafeTime;
    unsigned long long _llRaceElapsedTime;
-   unsigned long _lLastTransitionStringUpdate;
+   unsigned long long _llLastTransitionStringUpdate;
 
    uint8_t _iS1Pin;
    uint8_t _iS2Pin;

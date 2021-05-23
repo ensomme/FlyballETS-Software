@@ -117,7 +117,7 @@ void RaceHandlerClass::Main()
       //Get next record from queue
       STriggerRecord STriggerRecord = _QueuePop();
       //If the transition string is not empty and it wasn't updated for 200ms then we have to clear it.
-      if (_strTransition.length() != 0 && (GET_MICROS - _lLastTransitionStringUpdate) > 200000)
+      if (_strTransition.length() != 0 && (GET_MICROS - _llLastTransitionStringUpdate) > 200000)
       {
          //If dog state is GOINGIN we could have false detection of entering dog so we need to set S1StillSafe flag
          if (_byDogState == GOINGIN)
@@ -1021,12 +1021,12 @@ String RaceHandlerClass::GetStoredDogTimes(uint8_t iDogNumber, int8_t iRunNumber
    double dDogTime = 0;
    #if Accuracy2digits
    {
-      dDogTime = ((long long)(_lDogTimes[iDogNumber][iRunNumber] + 5000) / 10000) / 100.0;
+      dDogTime = ((unsigned long)(_lDogTimes[iDogNumber][iRunNumber] + 5000) / 10000) / 100.0;
       dtostrf(dDogTime, 7, 2, cDogTime);
    }
    #else
    {
-      dDogTime = ((long long)(_lDogTimes[iDogNumber][iRunNumber] + 500) / 1000) / 1000.0;
+      dDogTime = ((unsigned long)(_lDogTimes[iDogNumber][iRunNumber] + 500) / 1000) / 1000.0;
       dtostrf(dDogTime, 7, 3, cDogTime);
    }
    #endif
@@ -1090,7 +1090,7 @@ String RaceHandlerClass::TransformCrossingTime(uint8_t iDogNumber, int8_t iRunNu
       if ((iDogNumber == 0 && iRunNumber == 0 && _lCrossingTimes[0][0] > -9500) && Accuracy2digits)  //If this is first dog false start below 9.5ms
                                                                                                       //use "ms" accuracy even if 2digits accuracy has been set
       {
-         dCrossingTime = ((long long)(_lCrossingTimes[iDogNumber][iRunNumber] - 500) / 1000);
+         dCrossingTime = ((long)(_lCrossingTimes[iDogNumber][iRunNumber] - 500) / 1000);
          dCrossingTime = fabs(dCrossingTime);
          dtostrf(dCrossingTime, 3, 0, cCrossingTime);
          strCrossingTime = "-";
@@ -1099,7 +1099,7 @@ String RaceHandlerClass::TransformCrossingTime(uint8_t iDogNumber, int8_t iRunNu
       }
       else if (Accuracy2digits)
       {
-         dCrossingTime = ((long long)(_lCrossingTimes[iDogNumber][iRunNumber] - 5000) / 10000) / 100.0;
+         dCrossingTime = ((long)(_lCrossingTimes[iDogNumber][iRunNumber] - 5000) / 10000) / 100.0;
          dCrossingTime = fabs(dCrossingTime);
          dtostrf(dCrossingTime, 6, 2, cCrossingTime);
          strCrossingTime = "-";
@@ -1107,7 +1107,7 @@ String RaceHandlerClass::TransformCrossingTime(uint8_t iDogNumber, int8_t iRunNu
       }
       else
       {
-         dCrossingTime = ((long long)(_lCrossingTimes[iDogNumber][iRunNumber] - 500) / 1000) / 1000.0;
+         dCrossingTime = ((long)(_lCrossingTimes[iDogNumber][iRunNumber] - 500) / 1000) / 1000.0;
          dCrossingTime = fabs(dCrossingTime);
          dtostrf(dCrossingTime, 7, 3, cCrossingTime);
          strCrossingTime = "-";
@@ -1119,7 +1119,7 @@ String RaceHandlerClass::TransformCrossingTime(uint8_t iDogNumber, int8_t iRunNu
       if ((iDogNumber == 0 && iRunNumber == 0 && _lCrossingTimes[0][0] < 9500) && Accuracy2digits)   //If this is first dog entry time (start) below 9.5ms
                                                                                                       //use "ms" accuracy even if 2digits accuracy has been set
       {
-         dCrossingTime = ((long long)(_lCrossingTimes[iDogNumber][iRunNumber] + 500) / 1000);
+         dCrossingTime = ((long)(_lCrossingTimes[iDogNumber][iRunNumber] + 500) / 1000);
          dtostrf(dCrossingTime, 3, 0, cCrossingTime);
          strCrossingTime = "+";
          strCrossingTime += cCrossingTime;
@@ -1127,14 +1127,14 @@ String RaceHandlerClass::TransformCrossingTime(uint8_t iDogNumber, int8_t iRunNu
       }
       else if (Accuracy2digits)
       {
-         dCrossingTime = ((long long)(_lCrossingTimes[iDogNumber][iRunNumber] + 5000) / 10000) / 100.0;
+         dCrossingTime = ((long)(_lCrossingTimes[iDogNumber][iRunNumber] + 5000) / 10000) / 100.0;
          dtostrf(dCrossingTime, 6, 2, cCrossingTime);
          strCrossingTime = "+";
          strCrossingTime += cCrossingTime;
       }
       else
       {
-         dCrossingTime = ((long long)(_lCrossingTimes[iDogNumber][iRunNumber] + 500) / 1000) / 1000.0;
+         dCrossingTime = ((long)(_lCrossingTimes[iDogNumber][iRunNumber] + 500) / 1000) / 1000.0;
          dtostrf(dCrossingTime, 7, 3, cCrossingTime);
          strCrossingTime = "+";
          strCrossingTime += cCrossingTime;
@@ -1310,11 +1310,11 @@ stRaceData RaceHandlerClass::GetRaceData(uint iRaceId)
       RequestedRaceData.EndTime = (unsigned long)(_llRaceEndTime / 1000);
       #if Accuracy2digits
       {
-         RequestedRaceData.ElapsedTime = ((long long)(_llRaceTime + 5000) / 10000) / 100.0;
+         RequestedRaceData.ElapsedTime = ((unsigned long)(_llRaceTime + 5000) / 10000) / 100.0;
       }
       #else
       {
-         RequestedRaceData.ElapsedTime = ((long long)(_llRaceTime + 500) / 1000) / 1000.0;
+         RequestedRaceData.ElapsedTime = ((unsigned long)(_llRaceTime + 500) / 1000) / 1000.0;
       }
       #endif
       RequestedRaceData.TotalCrossingTime = this->GetNetTime();
@@ -1553,7 +1553,7 @@ void RaceHandlerClass::_AddToTransitionString(STriggerRecord _InterruptTrigger)
    //A indicates the handlers side, B indicates the boxes side
    //Uppercase indicates a high signal (dog broke beam), lowercase indicates a low signal (dog left beam)
 
-   _lLastTransitionStringUpdate = GET_MICROS;
+   _llLastTransitionStringUpdate = GET_MICROS;
 
    char cTemp;
    switch (_InterruptTrigger.iSensorNumber)

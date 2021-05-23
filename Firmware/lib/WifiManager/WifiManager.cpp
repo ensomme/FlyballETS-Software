@@ -23,15 +23,15 @@ void WifiManager::SetupWiFi()
 {
    //WiFi.onEvent(std::bind(&WifiManager::WiFiEvent, this, std::placeholders::_1));
    WiFi.onEvent(
-       [this](WiFiEvent_t event, system_event_info_t info) {
-          this->WiFiEvent(event, info);
-       });
+      [this](WiFiEvent_t event, system_event_info_t info) {
+         this->WiFiEvent(event, info);
+      });
    uint8_t iOpMode = SettingsManager.getSetting("OperationMode").toInt();
    _strAPName = SettingsManager.getSetting("APName");
    String strAPPass = SettingsManager.getSetting("APPass");
    ESP_LOGI(__FILE__, "Starting in mode %i", iOpMode);
    ESP_LOGI(__FILE__, "Name: %s, pass: %s\r\n", _strAPName.c_str(), strAPPass.c_str());
-   if (iOpMode == SystemModes::MASTER)
+   if (iOpMode == SystemModes::MASTER || iOpMode == SystemModes::SINGLE)
    {
       _IPGateway = IPAddress(192, 168, 20, 1);
       _IPSubnet = IPAddress(255, 255, 255, 0);

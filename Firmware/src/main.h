@@ -20,7 +20,7 @@
 #include <SettingsManager.h>
 #ifndef WiFiOFF
     #include <WebHandler.h>
-    #include <SlaveHandler.h>
+    //#include <SlaveHandler.h>
     #include <WifiManager.h>
 #endif
 #include <RaceHandler.h>
@@ -48,7 +48,7 @@ void StartStopRace();
 void StopRaceMain();
 void StartRaceMain();
 void serialEvent();
-void Core0Loop(void *parameter);
+//void Core0Loop(void *parameter);
 void HandleSerialMessages();
 void HandleRemoteControl();
 void HandleLCDUpdates();

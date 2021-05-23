@@ -256,8 +256,8 @@ void WebHandlerClass::init(int webPort)
 
 void WebHandlerClass::loop()
 {
-   //When race is starting, running or stopped (race time > 0)
-   if (RaceHandler.RaceState == RaceHandler.STARTING || RaceHandler.RaceState == RaceHandler.RUNNING)
+   //When race is starting, running or stopped
+   if (RaceHandler.RaceState != RaceHandler.RESET)
    {
       //Send race data each 750ms
       if (millis() - _lLastRaceDataBroadcast > _lRaceDataBroadcastInterval)
@@ -271,10 +271,8 @@ void WebHandlerClass::loop()
       _lLastSystemDataBroadcast = millis();
       _GetSystemData();
       _SendSystemData();
-
-      ESP_LOGD(__FILE__, "Have %i clients, %i consumers\r\n", _ws->count(), _iNumOfConsumers);
+      //ESP_LOGD(__FILE__, "Have %i clients, %i consumers\r\n", _ws->count(), _iNumOfConsumers);
    }
-
    _CheckMasterStatus();
 }
 

@@ -275,14 +275,14 @@ void setup()
 #ifdef ESP32
    mdnsServerSetup();
 
-   xTaskCreatePinnedToCore(
+   /*xTaskCreatePinnedToCore(
       Core0Loop,
       "Task0",
       8192,
       NULL,
       1,
       &Task0,
-      0);
+      0);*/
 #endif //  ESP32
 
    ESP_LOGI(__FILE__, "Ready, version %s", APP_VER);
@@ -529,7 +529,7 @@ void mdnsServerSetup()
 }
 #endif
 
-void Core0Loop(void *parameter)
+/*void Core0Loop(void *parameter)
 {
    SlaveHandler.init();
    for (;;)
@@ -538,7 +538,7 @@ void Core0Loop(void *parameter)
       //yield();
       vTaskDelay(5);
    }
-}
+}*/
 
 void HandleSerialMessages()
 {
